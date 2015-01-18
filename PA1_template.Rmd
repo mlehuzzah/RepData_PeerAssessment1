@@ -1,20 +1,219 @@
 # Reproducible Research: Peer Assessment 1
-
+---
+title: "Reproducible Research Peer Assessment 1"
+author: "Emily Fagerstrom"
+date: "Thursday, January 15, 2015"
+output: html_document
+---
 
 ## Loading and preprocessing the data
 
+UNZIP the *activity.zip* data, if it hasn't been already, and load it into R:
+
+```{r unzipping}
+
+unzip("activity.zip", overwrite=FALSE, exdir=".")
+
+data<-read.csv("activity.csv", header=TRUE)
+
+```
+
+Note to self: This seems to overwrite it every time, even if the file exists and nothing has changed???
 
 
 ## What is mean total number of steps taken per day?
 
+Goal: want to find the sum of *steps* for each factor level of *date*
+
+```{r stepsPerDay}
+
+stepsPerDay<-with(data,aggregate(steps ~ date, FUN = sum, na.rm=TRUE))
+
+head(stepsPerDay)
+```
+
+
+Goal: read the date column as dates
+
+```{r date2Date}
+
+library(timeDate)
+
+stepsPerDay$date<-as.Date(stepsPerDay$date,"%Y-%m-%d")
+
+head(stepsPerDay)
+
+```
+
+
+Goal: create a histogram of the data
+
+```{r histogram,fig.height=4,fig.width=4}
+
+hist(stepsPerDay$steps,col="blue",main="Steps per Day",xlab="steps",ylab="days",breaks=10)
+
+```
+
+
+Goal: find the mean and median number of steps taken per day:
+
+```{r meanAndMedian}
+
+summary(stepsPerDay$steps)[c(4,3)]
+
+```
 
 
 ## What is the average daily activity pattern?
 
+Goal: find the average daily pattern
+
+```{r dailyPattern}
+avgStepsPerInt<-with(data,aggregate(steps ~ interval, FUN = mean, na.rm=TRUE))
+```
+
+Goal: write the interval as a time.
+
+```{r intervalAsTime}
+
+time<-function(interval){
+    hr <- floor(interval/100)
+    min <- interval-hr*100
+    time = paste(as.character(hr),"-",as.character(min),sep="")
+}
+data$time <- time(data$interval)
+
+avgStepsPerInt$Time <- strptime(time(avgStepsPerInt$interval), format = "%H-%M")
+
+```
+
+Goal: plot a time series of the average day.
+
+```{r timeSeriesAvgday}
+
+with(avgStepsPerInt, plot(Time,steps,type="l"))
+
+```
+
+Goal: which interval has, on average, the most steps?
+
+```{r IntMostSteps}
+
+avgStepsPerInt[avgStepsPerInt$steps==max(avgStepsPerInt$steps),1]
+
+```
 
 
 ## Imputing missing values
 
+Goal: How many NA's are there in the steps variable?
+
+```{r isNaSteps}
+
+sum(is.na(data[,1]))
+
+```
+Just to check... there are no other NA's in any other column:
+
+```{r isNaOther}
+
+sum(is.na(data[,2]))+sum(is.na(data[,3]))
+
+```
+
+
+I am using a for loop this is the WORSTEST!!!!
+
+```{r replaceNAs}
+
+dataNoNA<-data
+
+for(i in 1:length(dataNoNA[,1])){
+    if(is.na(dataNoNA[i,1])){
+        dataNoNA[i,1]<-avgStepsPerInt[avgStepsPerInt$interval==dataNoNA[i,3],2]
+    }
+}
+
+head(dataNoNA)
+
+```
+
+Goal: create a histogram of the data
+
+```{r histogram2}
+
+stepsPerDayNoNA<-with(dataNoNA,aggregate(steps ~ date, FUN = sum, na.rm=TRUE))
+
+
+par(mfrow=c(1,2))
+hist(stepsPerDay$steps,col="blue",main="Steps per Day",xlab="steps",ylab="days",breaks=10,ylim=c(0, 25))
+hist(stepsPerDayNoNA$steps,col="blue",main="Steps per Day, NA imputed",xlab="steps",ylab="days",breaks=10,ylim=c(0, 25))
+
+```
+
+
+Goal: find the mean and median number of steps taken per day, given that NA values were imputed:
+
+
+```{r meanAndMedianNoNA}
+
+summary(stepsPerDayNoNA$steps)[c(4,3)]
+
+```
+
+So...the mean remained the same; the median went up.
 
 
 ## Are there differences in activity patterns between weekdays and weekends?
+
+
+Goal: Add a column to the new data frame, which includes the weekday.
+
+```{r AddDaysOfWeek}
+
+dataNoNA$day<-weekdays(as.Date(dataNoNA$date,"%Y-%m-%d"))
+
+```
+
+Goal: turn the days of the week into "weekday" and "weekend".  
+
+This is ugly.
+There is probably a way to do this nicely in one go... with 
+"c("Monday", "Tuesday", ...)" c("weekday", "weekday", ...)
+
+```{r DaytoGeneric}
+
+dataNoNA[,5]<-gsub("Monday", "weekday", dataNoNA[,5], ignore.case = FALSE)
+dataNoNA[,5]<-gsub("Tuesday", "weekday", dataNoNA[,5], ignore.case = FALSE)
+dataNoNA[,5]<-gsub("Wedday", "weekday", dataNoNA[,5], ignore.case = FALSE)
+dataNoNA[,5]<-gsub("Thursday", "weekday", dataNoNA[,5], ignore.case = FALSE)
+dataNoNA[,5]<-gsub("Friday", "weekday", dataNoNA[,5], ignore.case = FALSE)
+dataNoNA[,5]<-gsub("Saturday", "weekend", dataNoNA[,5], ignore.case = FALSE)
+dataNoNA[,5]<-gsub("Sunday", "weekend", dataNoNA[,5], ignore.case = FALSE)
+
+
+```
+
+Goal: build a dataframe from *dataNoNA* which takes the mean of the steps, conditioned on the time interval, and the type of day.
+
+```{r AvgStepsByTypeOfDay}
+
+avgStepsPerIntByDaytype<-with(dataNoNA,aggregate(steps, list(interval,day), FUN = mean))
+colnames(avgStepsPerIntByDaytype)<-c("interval","DayType","AvgSteps")
+
+```
+
+Goal: use the time function built above.
+
+```{r,fig.height=8,fig.width=6}
+
+avgStepsPerIntByDaytype$Time <- strptime(time(avgStepsPerIntByDaytype$interval), format = "%H-%M")
+
+
+par(mfrow=c(2,1))
+with(subset(avgStepsPerIntByDaytype, DayType == "weekday"), plot(Time,AvgSteps,type="l", main="Weekday"))
+with(subset(avgStepsPerIntByDaytype, DayType == "weekend"), plot(Time,AvgSteps,type="l", main="Weekend"))
+
+```
+
+Seems to get up a little later and walk a lot more on weekends.
